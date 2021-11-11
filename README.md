@@ -1,0 +1,1 @@
+Mid Term Project for Artificial Vision
