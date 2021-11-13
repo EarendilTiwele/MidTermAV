@@ -49,31 +49,6 @@ class FaceRecognition:
             self.rejection_threshold = self.rejection_threshold + 0.05
             score = accuracy_score(y_val, self.predict(X_val))
         self.rejection_threshold = best_rt
-        # left = 0.0
-        # right = 1.0
-        # best_rt = 1.0
-        # best_acc = 0.0
-        # for _ in range(10):
-        #     self.rejection_treshold = left
-        #     results = self.predict(X_val)
-        #     right_acc = accuracy_score(y_val, results)
-
-        #     self.rejection_treshold = right
-        #     results = self.predict(X_val)
-        #     left_acc = accuracy_score(y_val, results)
-
-        #     if left_acc >= right_acc:
-        #         if left_acc >= best_acc:
-        #             best_rt = left
-        #             best_acc = left_acc
-        #         right = (right+left)/2
-        #     else:
-        #         if right_acc >= best_acc:
-        #             best_rt = right
-        #             best_acc = right_acc
-        #         left = (left+right)/2
-
-        # self.rejection_treshold = best_rt
 
     def predict(self, X):
         '''Predicts the identities of a list of faces. The features have been already extracted.
@@ -84,7 +59,7 @@ class FaceRecognition:
         classes = np.argmax(probs, axis=1)
         results = []
         for i, c in enumerate(classes):
-            if probs[i, c] < self.rejection_treshold:
+            if probs[i, c] < self.rejection_threshold:
                 results.append(-1)
             else:
                 results.append(c)
@@ -94,7 +69,7 @@ class FaceRecognition:
         '''Saves model to be delivered in the pickle format.
         '''
         with open(output_path, 'wb') as file:
-            pk.dump(dict(model=self.model, th=self.rejection_treshold), file)
+            pk.dump(dict(model=self.model, th=self.rejection_threshold), file)
 
     def load(self, input_path='predictor.pkl'):
         '''Loads the model from a pickle file.
@@ -102,7 +77,7 @@ class FaceRecognition:
         with open(input_path, 'rb') as file:
             data = pk.load(file)
             self.model = data["model"]
-            self.rejection_treshold = data["th"]
+            self.rejection_threshold = data["th"]
 
 
 def preprocessing(bgr_image):
