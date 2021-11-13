@@ -2,6 +2,7 @@ import os
 import pickle as pk
 import cv2
 import numpy as np
+import dlib
 from numpy.core.fromnumeric import shape
 from tqdm import tqdm
 from sklearn.preprocessing import StandardScaler
@@ -9,6 +10,7 @@ from sklearn.decomposition import PCA
 from sklearn.model_selection import GridSearchCV
 from sklearn.svm import SVC
 from sklearn.metrics import accuracy_score
+from face_aligner import FaceAligner
 
 from utils import (
     get_dataset_filelist,
@@ -79,6 +81,12 @@ class FaceRecognition:
             self.model = data["model"]
             self.rejection_threshold = data["th"]
 
+faceProto = "opencv_face_detector.pbtxt"
+faceModel = "opencv_face_detector_uint8.pb"
+faceNet = cv2.dnn.readNet(faceModel, faceProto)
+predictor = dlib.shape_predictor('shape_predictor_68_face_landmarks.dat')
+detector = dlib.get_frontal_face_detector()
+fa = FaceAligner(predictor, desiredFaceWidth=224, desiredFaceHeight=224)
 
 def preprocessing(bgr_image):
     '''Use this function to preprocess your image (e.g. face crop, alignement, equalization, filtering, etc.)
@@ -88,7 +96,7 @@ def preprocessing(bgr_image):
     if debug == True:
         cv2.namedWindow("Original", cv2.WINDOW_NORMAL)
         cv2.imshow("Original",bgr_image)
-    aligned_face = align_face(bgr_image)
+    aligned_face = align_face(bgr_image, faceNet, fa)
     img_hsv = cv2.cvtColor(aligned_face, cv2.COLOR_BGR2HSV)
     img_hsv[:, :, 2] = cv2.equalizeHist(img_hsv[:, :, 2])
     equalized_face = cv2.cvtColor(img_hsv, cv2.COLOR_HSV2BGR)
@@ -106,7 +114,7 @@ def feature_extraction(X, y=None, model=None):
     '''
     arr_distances = []
     for image in tqdm(X, desc="Calculating distances between landmarks"):
-        distances = calculate_landmarks_distances(cv2.cvtColor(image, cv2.COLOR_BGR2GRAY))
+        distances = calculate_landmarks_distances(cv2.cvtColor(image, cv2.COLOR_BGR2GRAY), detector, predictor)
         arr_distances.append(distances)
     print("Standardizing features")
     sc = StandardScaler()

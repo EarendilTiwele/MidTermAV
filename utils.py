@@ -6,7 +6,6 @@ import numpy as np
 import pickle as pk
 
 from tqdm import tqdm
-from face_aligner import FaceAligner
 
 
 class Labeler:
@@ -145,13 +144,8 @@ def _pad_bb(rect, shape, padding=20):
 
 	return rect
 
-def align_face(bgr_img):
-    faceProto = "opencv_face_detector.pbtxt"
-    faceModel = "opencv_face_detector_uint8.pb"
-    faceNet = cv2.dnn.readNet(faceModel, faceProto)
+def align_face(bgr_img, faceNet, fa):
     frameFace, bbox = _getFaceBox(faceNet, bgr_img)
-    predictor = dlib.shape_predictor('shape_predictor_68_face_landmarks.dat')
-    fa = FaceAligner(predictor, desiredFaceWidth=224, desiredFaceHeight=224)
     padding = 0
     bbox = _pad_bb(bbox, frameFace.shape, padding)
     dlibRect = dlib.rectangle(int(bbox[0]), int(bbox[1]), int(bbox[2]), int(bbox[3])) 
@@ -159,9 +153,7 @@ def align_face(bgr_img):
     faceim = fa.align(frameFace, grayframe, dlibRect)
     return faceim
 
-def _get_landmarks(gray):
-    detector = dlib.get_frontal_face_detector()
-    predictor = dlib.shape_predictor('shape_predictor_68_face_landmarks.dat')
+def _get_landmarks(gray, detector, predictor):
     faces = detector(gray, 1)
     landmarks = []
     if len(faces) == 0:
@@ -173,8 +165,8 @@ def _get_landmarks(gray):
         landmarks.append(p)
     return landmarks
 
-def calculate_landmarks_distances(gray_image):
-    landmarks = _get_landmarks(gray_image)
+def calculate_landmarks_distances(gray_image, detector, predictor):
+    landmarks = _get_landmarks(gray_image, detector, predictor)
     if len(landmarks) == 0:
         return np.random.rand(67*68//2)
     distances = []
