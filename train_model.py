@@ -40,31 +40,40 @@ class FaceRecognition:
     def tune_rejection_threshold(self, X_val, y_val):
         '''Tuning of the rejection threshold.
         '''
-        left = 0.0
-        right = 1.0
-        best_rt = 1.0
-        best_acc = 0.0
-        for _ in range(10):
-            self.rejection_treshold = left
-            results = self.predict(X_val)
-            right_acc = accuracy_score(y_val, results)
+        prev_score = 0.0
+        score = accuracy_score(y_val, self.predict(X_val))
+        best_rt = 0.0
+        while score >= prev_score:
+            prev_score = score
+            best_rt = self.rejection_threshold
+            self.rejection_threshold = self.rejection_threshold + 0.05
+            score = accuracy_score(y_val, self.predict(X_val))
+        self.rejection_threshold = best_rt
+        # left = 0.0
+        # right = 1.0
+        # best_rt = 1.0
+        # best_acc = 0.0
+        # for _ in range(10):
+        #     self.rejection_treshold = left
+        #     results = self.predict(X_val)
+        #     right_acc = accuracy_score(y_val, results)
 
-            self.rejection_treshold = right
-            results = self.predict(X_val)
-            left_acc = accuracy_score(y_val, results)
+        #     self.rejection_treshold = right
+        #     results = self.predict(X_val)
+        #     left_acc = accuracy_score(y_val, results)
 
-            if left_acc >= right_acc:
-                if left_acc >= best_acc:
-                    best_rt = left
-                    best_acc = left_acc
-                right = (right+left)/2
-            else:  # right è il migliore
-                if right_acc >= best_acc:
-                    best_rt = right
-                    best_acc = right_acc
-                left = (left+right)/2
+        #     if left_acc >= right_acc:
+        #         if left_acc >= best_acc:
+        #             best_rt = left
+        #             best_acc = left_acc
+        #         right = (right+left)/2
+        #     else:
+        #         if right_acc >= best_acc:
+        #             best_rt = right
+        #             best_acc = right_acc
+        #         left = (left+right)/2
 
-        self.rejection_treshold = best_rt
+        # self.rejection_treshold = best_rt
 
     def predict(self, X):
         '''Predicts the identities of a list of faces. The features have been already extracted.
