@@ -8,6 +8,7 @@ from sklearn.preprocessing import StandardScaler
 from sklearn.decomposition import PCA
 from sklearn.model_selection import GridSearchCV
 from sklearn.svm import SVC
+from sklearn.metrics import accuracy_score
 
 from utils import (
     get_dataset_filelist,
@@ -22,46 +23,77 @@ class FaceRecognition:
     def __init__(self):
         '''FaceRecognition model constructor
         '''
-        self.model = None
-        pass
-
-    def fit(self, X_train, y_train, X_val, y_val):
-        '''FaceRecognition model training. The features have been already extracted.
-        '''
         param_grid = {
             "C": [1],
             "gamma": [0.005],
         }
-        clf = GridSearchCV(SVC(kernel="rbf", class_weight="balanced"), param_grid)
-        self.model = clf.fit(X_train, y_train)
+        self.model = GridSearchCV(SVC(kernel="rbf", class_weight="balanced", probability=True), param_grid)
+        self.rejection_threshold = 0.0
+
+    def fit(self, X_train, y_train, X_val, y_val):
+        '''FaceRecognition model training. The features have been already extracted.
+        '''
+        self.model.fit(X_train, y_train)
         # Tune the rejection threshold on the validation set
-        #self.tune_rejection_threshold(X_val, y_val)
+        self.tune_rejection_threshold(X_val, y_val)
 
     def tune_rejection_threshold(self, X_val, y_val):
         '''Tuning of the rejection threshold.
         '''
-        pass
+        left = 0.0
+        right = 1.0
+        best_rt = 1.0
+        best_acc = 0.0
+        for _ in range(10):
+            self.rejection_treshold = left
+            results = self.predict(X_val)
+            right_acc = accuracy_score(y_val, results)
+
+            self.rejection_treshold = right
+            results = self.predict(X_val)
+            left_acc = accuracy_score(y_val, results)
+
+            if left_acc >= right_acc:
+                if left_acc >= best_acc:
+                    best_rt = left
+                    best_acc = left_acc
+                right = (right+left)/2
+            else:  # right è il migliore
+                if right_acc >= best_acc:
+                    best_rt = right
+                    best_acc = right_acc
+                left = (left+right)/2
+
+        self.rejection_treshold = best_rt
 
     def predict(self, X):
         '''Predicts the identities of a list of faces. The features have been already extracted.
            The label is a number between 0 and N-1 if the face is recognized else -1.
            X is a list of examples to predict.
         '''
-        return self.model.predict(X)
+        probs = self.model.predict_proba(X)
+        classes = np.argmax(probs, axis=1)
+        results = []
+        for i, c in enumerate(classes):
+            if probs[i, c] < self.rejection_treshold:
+                results.append(-1)
+            else:
+                results.append(c)
+        return np.array(results)
 
     def save(self, output_path='predictor.pkl'):
         '''Saves model to be delivered in the pickle format.
         '''
-        file_path = "model.pkl"
-        with open(file_path,'wb') as file:
-               pk.dump(self.model, file)
+        with open(output_path, 'wb') as file:
+            pk.dump(dict(model=self.model, th=self.rejection_treshold), file)
 
     def load(self, input_path='predictor.pkl'):
         '''Loads the model from a pickle file.
         '''
-        file_path = "model.pkl"
-        with open(file_path,'rb') as file:
-               self.model = pk.load(file)
+        with open(input_path, 'rb') as file:
+            data = pk.load(file)
+            self.model = data["model"]
+            self.rejection_treshold = data["th"]
 
 
 def preprocessing(bgr_image):
@@ -89,7 +121,7 @@ def feature_extraction(X, y=None, model=None):
        Use the model parameter to load a pre-trained feature extractor.
     '''
     arr_distances = []
-    for image in tqdm(X):
+    for image in tqdm(X, desc="Calculating distances between landmarks"):
         distances = calculate_landmarks_distances(cv2.cvtColor(image, cv2.COLOR_BGR2GRAY))
         arr_distances.append(distances)
     print("Standardizing features")
@@ -104,7 +136,6 @@ def feature_extraction(X, y=None, model=None):
     pca.fit(features_std)   
 
     explainedVariance = pca.explained_variance_ratio_*100
-    print(f"Explained Variance list: {explainedVariance}")
 
     cum_variance = explainedVariance[0]
     K = 1
