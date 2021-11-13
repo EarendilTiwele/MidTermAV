@@ -115,7 +115,7 @@ def load_features(root_folder, dataset, labeler: Labeler, preprocessing_function
 
     return X_train, y_train, X_val, y_val
 
-def _getFaceBox(net, frame, conf_threshold=0.7):
+def _getFaceBox(net, frame):
     frameOpencv2Dnn = frame.copy()
     frameHeight = frameOpencv2Dnn.shape[0]
     frameWidth = frameOpencv2Dnn.shape[1]
@@ -123,14 +123,18 @@ def _getFaceBox(net, frame, conf_threshold=0.7):
 
     net.setInput(blob)
     detections = net.forward()
-    bboxes = []
+    bbox = None
+    max_confidence = 0.0
     for i in range(detections.shape[2]):
-        x1 = int(detections[0, 0, i, 3] * frameWidth)
-        y1 = int(detections[0, 0, i, 4] * frameHeight)
-        x2 = int(detections[0, 0, i, 5] * frameWidth)
-        y2 = int(detections[0, 0, i, 6] * frameHeight)
-        bboxes.append([x1, y1, x2, y2])
-    return frameOpencv2Dnn, bboxes
+        confidence = detections[0, 0, i, 2]
+        if confidence > max_confidence:
+            max_confidence = confidence
+            x1 = int(detections[0, 0, i, 3] * frameWidth)
+            y1 = int(detections[0, 0, i, 4] * frameHeight)
+            x2 = int(detections[0, 0, i, 5] * frameWidth)
+            y2 = int(detections[0, 0, i, 6] * frameHeight)
+            bbox = [x1, y1, x2, y2]
+    return frameOpencv2Dnn, bbox
 
 def _pad_bb(rect, shape, padding=20):
     # Add padding to the bbox taking into account the image shape
@@ -145,12 +149,36 @@ def align_face(bgr_img):
     faceProto = "opencv_face_detector.pbtxt"
     faceModel = "opencv_face_detector_uint8.pb"
     faceNet = cv2.dnn.readNet(faceModel, faceProto)
-    frameFace, bboxes = _getFaceBox(faceNet, bgr_img)
+    frameFace, bbox = _getFaceBox(faceNet, bgr_img)
     predictor = dlib.shape_predictor('shape_predictor_68_face_landmarks.dat')
     fa = FaceAligner(predictor, desiredFaceWidth=224, desiredFaceHeight=224)
     padding = 0
-    bbox = _pad_bb(bboxes[0], frameFace.shape, padding)
+    bbox = _pad_bb(bbox, frameFace.shape, padding)
     dlibRect = dlib.rectangle(int(bbox[0]), int(bbox[1]), int(bbox[2]), int(bbox[3])) 
     grayframe = cv2.cvtColor(frameFace, cv2.COLOR_BGR2GRAY)
     faceim = fa.align(frameFace, grayframe, dlibRect)
     return faceim
+
+def _get_landmarks(gray):
+    detector = dlib.get_frontal_face_detector()
+    predictor = dlib.shape_predictor('shape_predictor_68_face_landmarks.dat')
+    faces = detector(gray, 1)
+    landmarks = []
+    if len(faces) == 0:
+        return landmarks
+    rect = faces[0]
+    shape = predictor(gray, rect)
+    for i in range(0,68):
+        p = (shape.part(i).x, shape.part(i).y)
+        landmarks.append(p)
+    return landmarks
+
+def calculate_landmarks_distances(gray_image):
+    landmarks = _get_landmarks(gray_image)
+    if len(landmarks) == 0:
+        return np.random.rand(67*68//2)
+    distances = []
+    for i, lm in enumerate(landmarks[:-1]):
+        for o_lm in landmarks[i+1:]:
+            distances.append(np.linalg.norm(np.array(lm)-np.array(o_lm)))
+    return np.stack( distances, axis=0 )

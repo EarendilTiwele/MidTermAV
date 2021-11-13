@@ -1,17 +1,19 @@
 import os
 import pickle as pk
-import dlib
 import cv2
+import numpy as np
+from numpy.core.fromnumeric import shape
+from tqdm import tqdm
+from sklearn.preprocessing import StandardScaler
 from sklearn.decomposition import PCA
 from sklearn.model_selection import GridSearchCV
 from sklearn.svm import SVC
-
-from face_aligner import FaceAligner
 
 from utils import (
     get_dataset_filelist,
     load_features,
     align_face,
+    calculate_landmarks_distances,
     Labeler
 )
 
@@ -65,25 +67,59 @@ class FaceRecognition:
 def preprocessing(bgr_image):
     '''Use this function to preprocess your image (e.g. face crop, alignement, equalization, filtering, etc.)
     '''
+    # return bgr_image
+    debug = False
+    if debug == True:
+        cv2.namedWindow("Original", cv2.WINDOW_NORMAL)
+        cv2.imshow("Original",bgr_image)
     aligned_face = align_face(bgr_image)
-    equalized_face = cv2.equalizeHist(cv2.cvtColor(aligned_face, cv2.COLOR_BGR2GRAY))
-    return equalized_face
+    img_hsv = cv2.cvtColor(aligned_face, cv2.COLOR_BGR2HSV)
+    img_hsv[:, :, 2] = cv2.equalizeHist(img_hsv[:, :, 2])
+    equalized_face = cv2.cvtColor(img_hsv, cv2.COLOR_HSV2BGR)
+    filtered_face = cv2.bilateralFilter(equalized_face,9,75,75)
+    if debug == True:
+        cv2.namedWindow("Processed Image", cv2.WINDOW_NORMAL)
+        cv2.imshow("Processed Image",filtered_face)
+        cv2.waitKey(0)
+    return filtered_face
 
 
 def feature_extraction(X, y=None, model=None):
     '''Use this function to extract features from the train and validation sets. 
        Use the model parameter to load a pre-trained feature extractor.
     '''
-    n_components = 12
+    arr_distances = []
+    for image in tqdm(X):
+        distances = calculate_landmarks_distances(cv2.cvtColor(image, cv2.COLOR_BGR2GRAY))
+        arr_distances.append(distances)
+    print("Standardizing features")
+    sc = StandardScaler()
+    features_std = sc.fit_transform(arr_distances)
+    if model is not None:
+        features_pca = model.transform(features_std)
+        return features_pca, model
+    n_samples = features_std.shape[0]
+    print("Searching for best number of components")
+    pca = PCA(n_components=(n_samples - 1))
+    pca.fit(features_std)   
 
-    print("Extracting the top %d eigenfaces from %d faces" %
-          (n_components, X.shape[0]))
-    reshaped_X = X.reshape((X.shape[0], X.shape[1] * X.shape[2]))
-    pca = PCA(n_components=n_components, svd_solver="randomized",
-              whiten=True).fit(reshaped_X)
-    print("Projecting the input data on the eigenfaces orthonormal basis")
-    X_new = pca.transform(reshaped_X)
-    return X_new, model
+    explainedVariance = pca.explained_variance_ratio_*100
+    print(f"Explained Variance list: {explainedVariance}")
+
+    cum_variance = explainedVariance[0]
+    K = 1
+    for k in range(1, n_samples - 1):
+        cum_variance = cum_variance+explainedVariance[k]        
+        if cum_variance < 99:
+            K = K + 1
+        else:
+            break
+    print(f"Using best number of components: {K}")
+    pca = PCA(n_components = K)
+    pca = pca.fit(features_std)
+    features_pca = pca.transform(features_std)
+
+    return features_pca, pca
 
 
 if __name__ == '__main__':
@@ -106,20 +142,19 @@ if __name__ == '__main__':
     X_train, y_train, X_val, y_val = load_features(
         path, dataset_files, labeler, preprocessing)
 
+    print("Extracting features")
     # Compute features
     # Loading a feature extraction model if already trained.
-    with open('features_model.pkl','rb') as file:
-        feature_extration_model = pk.load(file)
-
-    X, _ = feature_extraction(X_train, feature_extration_model) 
-    
-    print("Extractin features")
-    #X, feature_extration_model = feature_extraction(X_train, y_train)
+    try:
+        with open('features_model.pkl','rb') as file:
+            feature_extration_model = pk.load(file)
+        X, _ = feature_extraction(X_train, feature_extration_model) 
+    except:
+        X, feature_extration_model = feature_extraction(X_train)
+        # Save feature extractor
+        with open('features_model.pkl', 'wb') as file:
+            pk.dump(feature_extration_model, file)
     Xv, _ = feature_extraction(X_val, model=feature_extration_model)
-
-    # Save feature extractor
-    with open('features_model.pkl', 'wb') as file:
-        pk.dump(feature_extration_model, file)
 
     # Define a Face Recognition model
     model = FaceRecognition()
