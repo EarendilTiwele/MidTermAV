@@ -43,7 +43,7 @@ class FaceRecognition:
         prev_score = 0.0
         score = accuracy_score(y_val, self.predict(X_val))
         best_rt = 0.0
-        while score >= prev_score:
+        while score >= prev_score and best_rt < 1.0: # Added just for safety
             prev_score = score
             best_rt = self.rejection_threshold
             self.rejection_threshold = self.rejection_threshold + 0.05
